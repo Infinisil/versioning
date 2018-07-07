@@ -2,39 +2,22 @@ import Data.Vect
 import Data.HVect
 
 main : IO ()
-main = do
-  x <- getLine
-  let foo = integerToFin (cast x) 3
-  case foo of
-    Nothing => putStrLn "Nothing"
-    Just xx => putStrLn "Something"
+main = putStrLn "Hi"
 
-CalcTrans : Vect (S k) Type -> Type
-CalcTrans xs = HVect $ zipWith (\a, b => a -> b) (init xs) (tail xs)
+data Versions : Vect (S k) Type -> Type -> Type where
+  Nil : Versions [a] a
+  (::) : (a -> b) -> Versions (b :: rest) d -> Versions (a :: b :: rest) d
 
-data Transitions : Type -> Vect (S k) (Type, Type) -> Type -> Type where
-  Single : (a -> b) -> Transitions a [(a, b)] b
-  Chained : (a -> b) -> Transitions b ((b, c) :: lss) d -> Transitions a ((a, b) :: (b, c) :: lss) d
+transition : Versions (a :: rest) b -> a -> b
+transition [] y = y
+transition (f :: x) y = transition x (f y)
 
-doIt : Transitions a ts b -> a -> b
-doIt (Single f) y = f y
-doIt (Chained f x) y = doIt x (f y)
-
-fromIth : (n : Fin (S k)) -> Transitions {k=k} a ts b -> Prelude.Basics.fst (Data.Vect.index n ts) -> b
-fromIth FZ (Single f) = f
-fromIth (FS x) (Single f) impossible
-fromIth FZ (Chained f x) = doIt (Chained f x)
-fromIth (FS z) (Chained f x) = fromIth z x
+getIt : (versions : Versions ts b) -> (def : b) -> (existing : Maybe (f ** (f, Elem f ts))) -> b
+getIt _ d Nothing = d -- No existing value, return default
+getIt [] d (Just (_ ** (a, Here))) = a -- Already updated to latest state
+getIt (trans :: x) d (Just (_ ** (a, Here))) = getIt x d (Just (_ ** (trans a, Here))) -- Not updated to latest state, recursing with migrated value
+getIt (trans :: x) d (Just (_ ** (a, There elem))) = getIt x d (Just (_ ** (a, elem))) -- Maybe not updated to latest value, recursing through al subterms
 
 
-
-Versions : Vect 3 Type
-Versions = [ Int, String, Double ]
-
-initial : head Versions
-initial = 10
-
-transitions : Transitions (head Versions) (zip (init Versions) (tail Versions)) (last Versions)
-transitions = Chained (const "") (Single (\x => cast x))
-
-
+g : (existing : Maybe (f ** (f, Elem f [String, Int, Double]))) -> Double
+g = getIt [cast, cast] 30.0
