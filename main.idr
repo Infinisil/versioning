@@ -93,39 +93,25 @@ mainWithDecode dec = do
 
 
 -- Version 1 of our program uses an integer to store its state
--- To decode it from a string we use cast : String -> Int
+-- First argument is the default value for the most recent state type
+-- Second argument is the state types
+-- Third argument is the migrations between the types, we don't need any now
 
 v1 : IO ()
 v1 = mainWithDecode $ decode' 0 [Int] []
 
 -- Version 2 of our program changed its state representation from an integer to a string  
--- We add String to the first list
--- We tell it how to decode a string by adding a decoding function for String to the second list
--- We migrate our old integer value by prefixing it with a message by adding the function to the third list
--- The default value is now a string
-
+-- We add a migration function
 v2 : IO ()
 v2 = mainWithDecode $ decode' "" [Int, String]
   [ ("Your integer was :" ++) . show
   ]
 
 -- Version 3 changes its state type again to an Int
--- We add Int to the first list
--- Tell it how to decode an int
--- Tell it how to migrate from a String to an Int, by just taking the length of the String
--- And change the default
+-- We add another migration function
 
 v3 : IO ()
 v3 = mainWithDecode $ decode' 10 [Int, String, Int]
   [ ("Your integer was :" ++) . show
   , cast . length
-  ]
-
-
-
-v4 : IO ()
-v4 = mainWithDecode $ decode' "hello" [Int, String, Int, String]
-  [ ("Your integer was:" ++) . show
-  , cast . length
-  , \int => cast int
   ]
