@@ -29,16 +29,35 @@ getIt [] d (Just (_ ** (a, Here))) = a -- Already updated to latest state
 getIt (trans :: x) d (Just (_ ** (a, Here))) = getIt x d (Just (_ ** (trans a, Here))) -- Not updated to latest state, recursing with migrated value
 getIt (trans :: x) d (Just (_ ** (a, There elem))) = getIt x d (Just (_ ** (a, elem))) -- Maybe not updated to latest value, recursing through al subterms
 
+
+
+
+interface Decodable a where
+  dec : String -> a
+
+interface Encodable a where
+  enc : a -> String
+
+Decodable Int where
+  dec = cast
+
+Decodable String where
+  dec = id
+
+
 ||| Decode a value of a type according to the given decoding functions for a list of types, return which type was used, the value of it, and a proof of it being present in the type list
 |||
 ||| @ n Which type of the type list should be used to decode the input
 ||| @ ts The list of types
-||| @ decode A way for decoding all types in the list from type s, this should be moved into an interface
-||| @ s The input type, e.g. a String
-decode : (n : Fin (S k)) -> (ts: Vect (S k) Type) -> (decode : All (\t => s -> t) ts) -> (input : s) -> (f ** (f, Elem f ts))
-decode FZ (z :: _) (x :: _) y = (z ** (x y, Here))
-decode (FS z) (_ :: (s :: xs)) (_ :: t) y with (decode z (s :: xs) t y)
-  decode (FS z) (_ :: (s :: xs)) (_ :: t) y | (f ** (str, elem)) = (f ** (str, There elem))
+||| @ decs A way for decoding all types in the list from type s, this should be moved into an interface
+decode : {ts: Vect (S k) Type}
+       -> {decs : All Decodable ts}
+       -> (n : Fin (S k))
+       -> (input : String)
+       -> (f ** (f, Elem f ts))
+decode {decs = _ :: _} FZ input = (_ ** (dec input, Here))
+decode {decs= _ :: restdec} (FS num) {k=S _} input with (decode {decs = restdec} num input)
+  decode _ input | (_ ** (result, elem)) = (_ ** (result, There elem))
 
 ||| Combination of decode and getIt: Takes a list of types, decoding functions, a migration scheme, default value, a version number and an input. Tries to fit the version number into the types range, and returns the decoded value according to the migration or the default.
 |||
@@ -46,13 +65,12 @@ decode (FS z) (_ :: (s :: xs)) (_ :: t) y with (decode z (s :: xs) t y)
 ||| @ decode A way for decoding all types in the list from type s, this should be moved into an interface
 ||| @ mig Migration to use in case an older value was passed in
 ||| @ def Default value in case no state was already stored
-||| @ s The input type, e.g. a string
 ||| @ n The old version number
 ||| @ input The old state, not decoded
-decode' : (ts : Vect (S k) Type) -> (decode : All (\t => s -> t) ts) -> (mig : Migration ts b) -> (def : b) -> (n: Integer) -> (input : s) -> b
-decode' {k=k} ts x mig def n s with (integerToFin n (S k))
-  decode' ts x mig def n s | Nothing = getIt mig def Nothing
-  decode' ts x mig def n s | (Just y) = getIt mig def (Just $ decode y ts x s)
+decode' : (def : b) -> (ts : Vect (S k) Type) -> {auto decode : All Decodable ts} -> (mig : Migration ts b) -> (n: Integer) -> (input : String) -> b
+decode' {decode=decs} {k=k} def _ mig n s with (integerToFin n (S k))
+  decode' def _ mig _ _ | Nothing = getIt mig def Nothing
+  decode' {decode=decs} def _ mig _ input | (Just ver) = getIt mig def (Just $ decode {decs=decs} ver input)
 
 
 -- ############# Example ##############
@@ -78,7 +96,7 @@ mainWithDecode dec = do
 -- To decode it from a string we use cast : String -> Int
 
 v1 : IO ()
-v1 = mainWithDecode $ decode' [Int] [cast] [] 0
+v1 = mainWithDecode $ decode' 0 [Int] []
 
 -- Version 2 of our program changed its state representation from an integer to a string  
 -- We add String to the first list
@@ -87,7 +105,9 @@ v1 = mainWithDecode $ decode' [Int] [cast] [] 0
 -- The default value is now a string
 
 v2 : IO ()
-v2 = mainWithDecode $ decode' [Int, String] [cast, id] [\int => "Your old integer value was : " ++ show int] "This is the default value now"
+v2 = mainWithDecode $ decode' "" [Int, String]
+  [ ("Your integer was :" ++) . show
+  ]
 
 -- Version 3 changes its state type again to an Int
 -- We add Int to the first list
@@ -96,7 +116,16 @@ v2 = mainWithDecode $ decode' [Int, String] [cast, id] [\int => "Your old intege
 -- And change the default
 
 v3 : IO ()
-v3 = mainWithDecode $ decode' [Int, String, Int] [cast, id, cast]
-  [ \int => "Your old integer value was : " ++ show int
+v3 = mainWithDecode $ decode' 10 [Int, String, Int]
+  [ ("Your integer was :" ++) . show
   , cast . length
-  ] 10
+  ]
+
+
+
+v4 : IO ()
+v4 = mainWithDecode $ decode' "hello" [Int, String, Int, String]
+  [ ("Your integer was:" ++) . show
+  , cast . length
+  , \int => cast int
+  ]
